@@ -488,13 +488,32 @@ def compress_layer_state_dict(layer_state_dict, compression=None):
 
     return compressed_layer_state_dict if compressed_layer_state_dict is not None else layer_state_dict
 
+def _safe_torch_load(path):
+    """Load a torch ``.bin`` checkpoint without executing arbitrary pickle payloads.
+
+    Model weight files hold only tensors and plain containers, so ``weights_only=True`` is both
+    sufficient and required for safety: the default unpickler will instantiate arbitrary objects,
+    which turns a tampered checkpoint into remote code execution. ``weights_only`` exists on every
+    supported torch (>=2.4), so there is deliberately no fallback that disables it.
+    """
+    return torch.load(path, map_location='cpu', weights_only=True)
+
+
 def remove_real_and_linked_file(to_delete):
-    if (os.path.realpath(to_delete) != to_delete):
-        targetpath = os.path.realpath(to_delete)
+    """Delete ``to_delete`` and, when it is a link, the real file it points at.
+
+    ``targetpath`` must start as None: the original code only assigned it inside the branch where the
+    path resolved through a symlink, so a plain (non-link) path reached ``if (targetpath)`` with an
+    unbound local and crashed. Compare string forms so a Path and its resolved string match.
+    """
+    targetpath = None
+    real = os.path.realpath(str(to_delete))
+    if real != str(to_delete):
+        targetpath = real
 
     os.remove(to_delete)
-    if (targetpath):
-         os.remove(targetpath)
+    if targetpath:
+        os.remove(targetpath)
 
 
 
@@ -563,7 +582,7 @@ def split_and_save_layers(checkpoint_path, layer_shards_saving_path=None, splitt
     elif os.path.exists(checkpoint_path / 'pytorch_model.bin'):
         # single-file torch checkpoint: map every tensor to that one file
         safetensors_format = False
-        single_sd = torch.load(checkpoint_path / 'pytorch_model.bin', map_location='cpu')
+        single_sd = _safe_torch_load(checkpoint_path / 'pytorch_model.bin')
         index = {k: 'pytorch_model.bin' for k in single_sd.keys()}
         del single_sd
     else:
@@ -735,7 +754,7 @@ def split_and_save_layers(checkpoint_path, layer_shards_saving_path=None, splitt
                                                     token=hf_token)
 
                 if not safetensors_format:
-                    loaded = torch.load(to_load, map_location='cpu')
+                    loaded = _safe_torch_load(to_load)
                 else:
                     loaded = load_file(to_load, device='cpu')
                 marker = (layer_names or {}).get('cpu_resident_marker')
@@ -753,7 +772,7 @@ def split_and_save_layers(checkpoint_path, layer_shards_saving_path=None, splitt
                 huggingface_hub.snapshot_download(repo_id, allow_patterns=os.path.basename(to_load),
                                                 token=hf_token)
             if not safetensors_format:
-                loaded = torch.load(to_load, map_location='cpu')
+                loaded = _safe_torch_load(to_load)
             else:
                 loaded = load_file(to_load, device='cpu')
             marker = (layer_names or {}).get('cpu_resident_marker')

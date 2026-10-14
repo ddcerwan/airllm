@@ -371,10 +371,11 @@ class AirLLMLoRA(AirLLMQwen3_5):
         torch.save(lora_state_dict(self.model), path)
 
     def load_adapter(self, path):
-        try:
-            state = torch.load(path, map_location="cpu", weights_only=True)
-        except TypeError:
-            state = torch.load(path, map_location="cpu")
+        # LoRA adapters are plain tensor dicts, so load with weights_only=True unconditionally: the
+        # default unpickler can execute arbitrary code from a tampered file, and the old TypeError
+        # fallback silently disabled that protection on older torch. weights_only exists on every
+        # supported torch (>=2.4), so the fallback is no longer needed.
+        state = torch.load(path, map_location="cpu", weights_only=True)
         load_lora_state_dict(self.model, state)
 
 
