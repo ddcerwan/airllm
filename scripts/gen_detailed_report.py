@@ -186,9 +186,75 @@ def render_pdf(out_path):
     print(f"PDF généré : {out_path}")
 
 
+# ------------------------------------------------------------------ Markdown
+def _md_escape_cell(text):
+    """Escape pipes/newlines so a cell doesn't break the Markdown table."""
+    return str(text).replace('|', '\\|').replace('\n', ' ')
+
+
+def render_markdown(out_path):
+    lines = []
+    for block in BLOCKS:
+        kind = block[0]
+        if kind == 'title':
+            lines.append(f'# {block[1]}')
+            lines.append('')
+        elif kind == 'subtitle':
+            lines.append(f'*{block[1]}*')
+            lines.append('')
+        elif kind == 'meta':
+            lines.append(f'`{block[1]}`')
+            lines.append('')
+        elif kind == 'h1':
+            lines.append('')
+            lines.append(f'## {block[1]}')
+            lines.append('')
+        elif kind == 'h2':
+            lines.append(f'### {block[1]}')
+            lines.append('')
+        elif kind == 'h3':
+            lines.append(f'#### {block[1]}')
+            lines.append('')
+        elif kind == 'p':
+            lines.append(block[1])
+            lines.append('')
+        elif kind == 'bullets':
+            for item in block[1]:
+                if isinstance(item, tuple):
+                    lines.append(f'- **{item[0].strip()}** {item[1]}')
+                else:
+                    lines.append(f'- {item}')
+            lines.append('')
+        elif kind == 'callout':
+            # GitHub-style alert rendered as a blockquote.
+            quoted = '  \n'.join(l for l in block[1].split('\n'))
+            lines.append('> ℹ️ ' + quoted)
+            lines.append('')
+        elif kind == 'table':
+            headers, rows, _widths = block[1], block[2], block[3]
+            lines.append('| ' + ' | '.join(_md_escape_cell(h) for h in headers) + ' |')
+            lines.append('| ' + ' | '.join(['---'] * len(headers)) + ' |')
+            for row in rows:
+                lines.append('| ' + ' | '.join(_md_escape_cell(c) for c in row) + ' |')
+            lines.append('')
+        elif kind == 'code':
+            lines.append('```python')
+            lines.append(block[1])
+            lines.append('```')
+            lines.append('')
+        elif kind == 'pagebreak':
+            lines.append('---')
+            lines.append('')
+
+    with open(out_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(lines).rstrip() + '\n')
+    print(f"Markdown généré : {out_path}")
+
+
 def main(base):
     render_docx(base + '.docx')
     render_pdf(base + '.pdf')
+    render_markdown(base + '.md')
 
 
 if __name__ == '__main__':
