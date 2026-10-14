@@ -106,6 +106,7 @@ class AirLLMLoRA(AirLLMQwen3_5):
         lr=1e-4,
         ce_chunk_size=4096,
         weight_decay=0.0,
+        trust_remote_code=None,
     ):
         super().__init__(
             model_local_path_or_repo_id,
@@ -120,6 +121,7 @@ class AirLLMLoRA(AirLLMQwen3_5):
             delete_original=delete_original,
             install_hooks=False,
             load_resident=False,
+            trust_remote_code=trust_remote_code,
         )
         self.lora_r = lora_r
         self.lora_alpha = lora_alpha
@@ -415,6 +417,7 @@ class AirLLMLoRAQwen4Exp(AirLLMQwen4Exp):
         ce_chunk_size=4096,
         weight_decay=0.0,
         packed_experts=False,
+        trust_remote_code=None,
     ):
         super().__init__(
             model_local_path_or_repo_id,
@@ -429,6 +432,7 @@ class AirLLMLoRAQwen4Exp(AirLLMQwen4Exp):
             delete_original=delete_original,
             install_hooks=False,
             load_resident=False,
+            trust_remote_code=trust_remote_code,
         )
         self.lora_r = lora_r
         self.lora_alpha = lora_alpha

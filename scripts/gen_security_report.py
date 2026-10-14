@@ -267,8 +267,9 @@ def main(out_path):
         "Les risques suivants, hors du périmètre du lot corrigé, sont identifiés pour une action "
         "ultérieure :"
     )
-    bullet(doc, "get_tokenizer() (airllm_base.py) et le chemin MLX conservent trust_remote_code=True "
-                "implicite — un refactor plus large serait nécessaire ;", bold_lead="Code distant résiduel — ")
+    bullet(doc, "get_tokenizer() (airllm_base.py, MLX et Baichuan) applique désormais la politique "
+                "trust_remote_code tri-état résolue à l'initialisation (None = auto natif puis repli, "
+                "True = distant, False = jamais de code distant), au lieu de forcer True ;", bold_lead="Code distant — ")
     bullet(doc, "link_or_copy_file() suit les liens symboliques (impact faible, contenu confiné au "
                 "cache HuggingFace) ;", bold_lead="Liens symboliques — ")
     bullet(doc, "le packaging officiel (setup.py) conserve une plage PyPI saine "

@@ -217,7 +217,7 @@ def build_story(ss):
         "Les risques suivants, hors du périmètre du lot corrigé, sont identifiés pour une action "
         "ultérieure :", ss['Body']))
     A(bullets(ss, [
-        '<b>Code distant résiduel</b> — get_tokenizer() (airllm_base.py) et le chemin MLX conservent trust_remote_code=True implicite — un refactor plus large serait nécessaire ;',
+        '<b>Code distant</b> — get_tokenizer() (airllm_base.py, MLX et Baichuan) applique désormais la politique trust_remote_code tri-état résolue à l\'initialisation (None = auto natif puis repli, True = distant, False = jamais de code distant), au lieu de forcer True ;',
         '<b>Liens symboliques</b> — link_or_copy_file() suit les liens symboliques (impact faible, contenu confiné au cache HuggingFace) ;',
         '<b>Packaging</b> — le packaging officiel (setup.py) conserve une plage PyPI saine (transformers>=4.49,<6) ; seules les broches dev/CI ont été figées.',
     ]))

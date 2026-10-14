@@ -84,7 +84,7 @@ class AirLLMBaseModel:
     def __init__(self, model_local_path_or_repo_id, device="cuda:0", dtype=None, max_seq_len=512,
                  layer_shards_saving_path=None, profiling_mode=False, compression=None,
                  hf_token=None, prefetching=True, delete_original=False,
-                 install_hooks=True, load_resident=True):
+                 install_hooks=True, load_resident=True, trust_remote_code=None):
         """
         Parameters
         ----------
@@ -117,6 +117,11 @@ class AirLLMBaseModel:
         load_resident: bool, optional
             load ``resident`` modules (e.g. a vision tower) onto the GPU. Text-only LoRA
             training leaves them on meta.
+        trust_remote_code: bool or None, optional
+            controls execution of the checkpoint's bundled remote Python code when loading the
+            config and tokenizer. ``None`` (default) tries transformers' native parser/tokenizer
+            first and only falls back to remote code when that fails. ``False`` forbids remote
+            code entirely (raises if the model needs it); ``True`` trusts it unconditionally.
         """
 
         self.profiling_mode = profiling_mode
@@ -153,15 +158,27 @@ class AirLLMBaseModel:
         # transformers doesn't recognize the architecture. Vendored remote code is frequently pinned
         # to an old transformers and breaks against the current cache/generation APIs (e.g.
         # DeepSeek-V2's modeling_deepseek.py calls the long-removed DynamicCache.seen_tokens).
+        # ``trust_remote_code`` lets the caller override this: None = auto (native first, remote on
+        # failure), True = always trust remote code, False = never run remote code (may raise).
+        self.trust_remote_code = trust_remote_code
         token_kwargs = {'token': hf_token} if hf_token is not None else {}
-        try:
+        if self.trust_remote_code is False:
             self.config = AutoConfig.from_pretrained(
                 self.model_local_path, trust_remote_code=False, **token_kwargs)
             self.trust_remote_code = False
-        except Exception:
+        elif self.trust_remote_code is True:
             self.config = AutoConfig.from_pretrained(
                 self.model_local_path, trust_remote_code=True, **token_kwargs)
             self.trust_remote_code = True
+        else:
+            try:
+                self.config = AutoConfig.from_pretrained(
+                    self.model_local_path, trust_remote_code=False, **token_kwargs)
+                self.trust_remote_code = False
+            except Exception:
+                self.config = AutoConfig.from_pretrained(
+                    self.model_local_path, trust_remote_code=True, **token_kwargs)
+                self.trust_remote_code = True
 
         # Default to the model's native dtype (bf16 for most modern models). Forcing fp16 overflows
         # on deep models (e.g. Qwen3-235B's 94 layers) and produces garbage; bf16's wider range
@@ -221,10 +238,16 @@ class AirLLMBaseModel:
             return GenerationConfig()
 
     def get_tokenizer(self, hf_token=None):
-        if hf_token is not None:
-            return AutoTokenizer.from_pretrained(self.model_local_path, token=hf_token, trust_remote_code=True)
-        else:
-            return AutoTokenizer.from_pretrained(self.model_local_path, trust_remote_code=True)
+        # Mirror the config-loading policy in self.trust_remote_code (resolved during __init__):
+        # False = never run remote code, True = trust it. When auto (None) it was resolved to the
+        # value that successfully loaded the config, so reusing it keeps tokenizer and config
+        # consistent instead of unconditionally executing remote tokenizer code.
+        token_kwargs = {'token': hf_token} if hf_token is not None else {}
+        if self.trust_remote_code is False:
+            return AutoTokenizer.from_pretrained(
+                self.model_local_path, trust_remote_code=False, **token_kwargs)
+        return AutoTokenizer.from_pretrained(
+            self.model_local_path, trust_remote_code=True, **token_kwargs)
 
     # ---- model construction -----------------------------------------------------------------
 

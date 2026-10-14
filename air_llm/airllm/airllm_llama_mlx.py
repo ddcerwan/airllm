@@ -210,9 +210,10 @@ class AirLLMLlamaMlx:
     def __init__(self, model_local_path_or_repo_id, device="cuda:0", dtype=None, max_seq_len=512,
                  layer_shards_saving_path=None, profiling_mode=False, compression=None,
                  hf_token=None, prefetching=True, test_nonlayered=False, show_memory_util=False,
-                 delete_original=False):
+                 delete_original=False, trust_remote_code=None):
 
         self.hf_token = hf_token
+        self.trust_remote_code = trust_remote_code
         self.set_layer_names_dict()
         self.test_nonlayered = test_nonlayered
         self.show_memory_util = show_memory_util
@@ -227,10 +228,25 @@ class AirLLMLlamaMlx:
                                                                                          layer_names=self.layer_names_dict,
                                                                                          hf_token=hf_token,
                                                                                          delete_original=delete_original)
-        if hf_token is not None:
-            self.config = AutoConfig.from_pretrained(self.model_local_path, token=hf_token, trust_remote_code=True)
+        token_kwargs = {'token': hf_token} if hf_token is not None else {}
+        if self.trust_remote_code is False:
+            self.config = AutoConfig.from_pretrained(
+                self.model_local_path, trust_remote_code=False, **token_kwargs)
+            self.trust_remote_code = False
+        elif self.trust_remote_code is True:
+            self.config = AutoConfig.from_pretrained(
+                self.model_local_path, trust_remote_code=True, **token_kwargs)
+            self.trust_remote_code = True
         else:
-            self.config = AutoConfig.from_pretrained(self.model_local_path, trust_remote_code=True)
+            # Auto: prefer transformers' native parser, fall back to remote code only if it fails.
+            try:
+                self.config = AutoConfig.from_pretrained(
+                    self.model_local_path, trust_remote_code=False, **token_kwargs)
+                self.trust_remote_code = False
+            except Exception:
+                self.config = AutoConfig.from_pretrained(
+                    self.model_local_path, trust_remote_code=True, **token_kwargs)
+                self.trust_remote_code = True
 
 
         self.model_args = get_model_args_from_config(self.config)
@@ -243,10 +259,14 @@ class AirLLMLlamaMlx:
 
 
     def get_tokenizer(self, hf_token=None):
-        if hf_token is not None:
-            return AutoTokenizer.from_pretrained(self.model_local_path, token=hf_token, trust_remote_code=True)
-        else:
-            return AutoTokenizer.from_pretrained(self.model_local_path, trust_remote_code=True)
+        # Mirror the resolved self.trust_remote_code policy (see __init__) so the tokenizer and
+        # config stay consistent instead of unconditionally executing remote tokenizer code.
+        token_kwargs = {'token': hf_token} if hf_token is not None else {}
+        if self.trust_remote_code is False:
+            return AutoTokenizer.from_pretrained(
+                self.model_local_path, trust_remote_code=False, **token_kwargs)
+        return AutoTokenizer.from_pretrained(
+            self.model_local_path, trust_remote_code=True, **token_kwargs)
 
 
     def generate(self, x, temperature=0, max_new_tokens=None, **kwargs):

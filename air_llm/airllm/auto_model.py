@@ -36,19 +36,21 @@ class AutoModel:
 
     @classmethod
     def get_module_class(cls, pretrained_model_name_or_path, *inputs, **kwargs):
-        # Reading the config can require executing the checkpoint's bundled remote code. Default to
-        # NOT trusting it: try transformers' native parser first and only fall back to remote code
-        # when the native parser can't read the architecture (custom remote-code models). This
-        # mirrors what AirLLMBaseModel does internally. Pass trust_remote_code=True to force it on.
-        trust_remote_code = kwargs.pop('trust_remote_code', False)
+        # Reading the config can require executing the checkpoint's bundled remote code. Policy is
+        # tri-state, mirroring AirLLMBaseModel: None (default) = auto (try the native parser first,
+        # fall back to remote code only if it fails), True = always trust remote code,
+        # False = never run remote code (may raise for custom-architecture models).
+        trust_remote_code = kwargs.pop('trust_remote_code', None)
         token_kwargs = {'token': kwargs['hf_token']} if 'hf_token' in kwargs else {}
 
         def _load_config(trc):
             return AutoConfig.from_pretrained(pretrained_model_name_or_path,
                                               trust_remote_code=trc, **token_kwargs)
 
-        if trust_remote_code:
+        if trust_remote_code is True:
             config = _load_config(True)
+        elif trust_remote_code is False:
+            config = _load_config(False)
         else:
             try:
                 config = _load_config(False)
@@ -70,11 +72,13 @@ class AutoModel:
         if is_on_mac_os:
             return AirLLMLlamaMlx(pretrained_model_name_or_path, *inputs, **kwargs)
 
-        # trust_remote_code is consumed here (config auto-detection) and must not be forwarded to the
-        # model class constructor, which decides remote-code usage on its own.
-        trust_remote_code = kwargs.pop('trust_remote_code', False)
+        # trust_remote_code stays in kwargs so it flows to the model constructor (which applies it to
+        # the model's own config + tokenizer). get_module_class reads it too for architecture
+        # detection; because Python builds a fresh local kwargs there when we splat **kwargs, its
+        # pop() does not remove it from this frame's kwargs. Default None = auto (native first,
+        # remote code only as a fallback), consistent with AirLLMBaseModel.
         module, class_name = AutoModel.get_module_class(
-            pretrained_model_name_or_path, *inputs, trust_remote_code=trust_remote_code, **kwargs)
+            pretrained_model_name_or_path, *inputs, **kwargs)
         module = importlib.import_module(module)
         class_ = getattr(module, class_name)
         return class_(pretrained_model_name_or_path, *inputs, **kwargs)
